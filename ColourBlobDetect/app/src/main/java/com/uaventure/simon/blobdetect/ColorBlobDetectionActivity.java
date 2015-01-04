@@ -1,7 +1,5 @@
 package com.uaventure.simon.blobdetect;
 
-import java.util.List;
-
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.LoaderCallbackInterface;
@@ -9,24 +7,17 @@ import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfPoint;
-import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
-import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
-import org.opencv.highgui.Highgui;
-import org.opencv.highgui.VideoCapture;
 import org.opencv.imgproc.Imgproc;
 
 import android.app.Activity;
-import android.hardware.Camera;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.Window;
 import android.view.WindowManager;
 import android.view.View.OnTouchListener;
 
@@ -41,6 +32,20 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
     private Mat                  mSpectrum;
     private Size                 SPECTRUM_SIZE;
     private Scalar               CONTOUR_COLOR;
+    private Scalar               BLUE_RGB;
+    private Scalar               BLUE_MIN;
+    private Scalar               BLUE_MAX;
+    private Scalar               RED_RGB;
+    private Scalar               RED_MIN;
+    private Scalar               RED_MAX;
+    private Scalar               GREEN_RGB;
+    private Scalar               GREEN_MIN;
+    private Scalar               GREEN_MAX;
+    private Scalar               YELLOW_RGB;
+    private Scalar               YELLOW_MIN;
+    private Scalar               YELLOW_MAX;
+    private Scalar               BLACK_RGB;
+    private Scalar               WHITE_RGB;
     private Rect                 mRect;
     private int                  count = 0;
 
@@ -113,6 +118,22 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
         SPECTRUM_SIZE = new Size(200, 64);
         CONTOUR_COLOR = new Scalar(255,255,0,255);
 
+        // Colour scalars
+        BLUE_RGB = new Scalar(0, 0, 255);
+        BLUE_MIN = new Scalar(120, 100, 100);
+        BLUE_MAX = new Scalar(179, 255, 255);
+        RED_RGB = new Scalar(255, 0, 0);
+        RED_MIN = new Scalar(0, 100, 100);
+        RED_MAX = new Scalar(12, 255, 255);
+        GREEN_RGB = new Scalar(0, 255, 0);
+        GREEN_MIN = new Scalar(85, 100, 100);
+        GREEN_MAX = new Scalar(95, 255, 255);
+        YELLOW_RGB = new Scalar(255, 255, 0);
+        YELLOW_MIN = new Scalar(10, 100, 100);
+        YELLOW_MAX = new Scalar(40, 255, 255);
+        BLACK_RGB = new Scalar(0, 0, 0);
+        WHITE_RGB = new Scalar(255, 255, 255);
+
         // Define the target rectangle on the preview screen.
         Log.i(TAG, "W: " + width + " H: " + height);
         int cols = mRgba.cols();
@@ -175,22 +196,64 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
         Mat touchedRegionHsv = new Mat();
         Imgproc.cvtColor(touchedRegionRgba, touchedRegionHsv, Imgproc.COLOR_RGB2HSV_FULL);
 
-
-        Scalar min = new Scalar(110, 150, 150);    // Blue min
-        Scalar max = new Scalar(130, 255, 255);  // Blue max
-
         Mat mask = new Mat();
-        Core.inRange(touchedRegionHsv, min, max, mask);
-        Scalar maskScalar = Core.sumElems(mask);
+
+        Core.inRange(touchedRegionHsv, GREEN_MIN, GREEN_MAX, mask);
 
         boolean ledOn = false;
+        Scalar maskScalar = Core.sumElems(mask);
         for (int i = 0; i < maskScalar.val.length; ++i) {
             if (maskScalar.val[i] > 0.0) {
                 ledOn = true;
                 break;
-            };
+            }
         }
-        mBlobColorRgba = ledOn ? new Scalar(255, 255, 255) : new Scalar(0, 0, 0);
+        mBlobColorRgba = ledOn ? GREEN_RGB : BLACK_RGB;
+
+        if (!ledOn) {
+            Core.inRange(touchedRegionHsv, RED_MIN, RED_MAX, mask);
+
+            ledOn = false;
+            maskScalar = Core.sumElems(mask);
+            for (int i = 0; i < maskScalar.val.length; ++i) {
+                if (maskScalar.val[i] > 0.0) {
+                    ledOn = true;
+                    break;
+                }
+            }
+
+            mBlobColorRgba = ledOn ? RED_RGB : BLACK_RGB;
+        }
+
+        if (!ledOn) {
+            Core.inRange(touchedRegionHsv, BLUE_MIN, BLUE_MAX, mask);
+
+            ledOn = false;
+            maskScalar = Core.sumElems(mask);
+            for (int i = 0; i < maskScalar.val.length; ++i) {
+                if (maskScalar.val[i] > 0.0) {
+                    ledOn = true;
+                    break;
+                }
+            }
+
+            mBlobColorRgba = ledOn ? BLUE_RGB : BLACK_RGB;
+        }
+
+        if (!ledOn) {
+            Core.inRange(touchedRegionHsv, YELLOW_MIN, YELLOW_MAX, mask);
+
+            ledOn = false;
+            maskScalar = Core.sumElems(mask);
+            for (int i = 0; i < maskScalar.val.length; ++i) {
+                if (maskScalar.val[i] > 0.0) {
+                    ledOn = true;
+                    break;
+                }
+            }
+
+            mBlobColorRgba = ledOn ? YELLOW_RGB : BLACK_RGB;
+        }
 
         // Calculate average color of the selected region
         mBlobColorHsv = Core.sumElems(touchedRegionHsv);
@@ -203,6 +266,7 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
 
         Imgproc.resize(mDetector.getSpectrum(), mSpectrum, SPECTRUM_SIZE);
 
+        mask.release();
         touchedRegionRgba.release();
         touchedRegionHsv.release();
 
@@ -217,6 +281,7 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
         //        ", " + mBlobColorRgba.val[2] + ", " + mBlobColorRgba.val[3] + ")");
 
         // Display colour box in the top left corner.
+
         Mat colorLabel = mRgba.submat(4, 68, 4, 68);
         colorLabel.setTo(mBlobColorRgba);
 
