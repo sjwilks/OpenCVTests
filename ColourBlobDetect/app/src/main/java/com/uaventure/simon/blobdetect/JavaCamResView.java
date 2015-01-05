@@ -42,11 +42,11 @@ public class JavaCamResView extends JavaCameraView {
                 }
                 break;
             case 1:
-                if (BalModes.contains(Camera.Parameters.WHITE_BALANCE_CLOUDY_DAYLIGHT)) {
-                    params.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_CLOUDY_DAYLIGHT);
-                    Log.e(TAG, "Cloudy daylight white balance set");
+                if (BalModes.contains(Camera.Parameters.WHITE_BALANCE_DAYLIGHT)) {
+                    params.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_DAYLIGHT);
+                    Log.e(TAG, "Daylight white balance set");
                 } else{
-                    Log.e(TAG, "Cloudy daylight white balance not supported");
+                    Log.e(TAG, "Daylight white balance not supported");
                 }
                 break;
             case 2:
@@ -58,6 +58,7 @@ public class JavaCamResView extends JavaCameraView {
                 }
                 break;
         }
+        params.setAutoWhiteBalanceLock(true);
         mCamera.setParameters(params);
     }
 
@@ -66,20 +67,23 @@ public class JavaCamResView extends JavaCameraView {
         int minExposure = params.getMinExposureCompensation();
         int maxExposure = params.getMaxExposureCompensation();
 
+        params.set("max-brightness", 1);
+
         switch (type) {
             case 0:
                 params.setExposureCompensation(minExposure);
-                Log.e(TAG, "Min exposure set");
+                Log.e(TAG, "Min exposure set: " + minExposure);
                 break;
             case 1:
                 params.setExposureCompensation(maxExposure);
-                Log.e(TAG, "Max exposure set");
+                Log.e(TAG, "Max exposure set: " + maxExposure);
                 break;
         }
         // Lock exposure so it will not try to adjust due to flashing LEDs.
         params.setAutoExposureLock(true);
 
         mCamera.setParameters(params);
+        Log.e(TAG, mCamera.getParameters().get("max-brightness"));
     }
 
     public void setFocusMode(int type) {

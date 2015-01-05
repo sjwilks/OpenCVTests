@@ -21,7 +21,8 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.View.OnTouchListener;
 
-public class ColorBlobDetectionActivity extends Activity implements OnTouchListener, CvCameraViewListener2 {
+public class ColorBlobDetectionActivity extends Activity
+        implements OnTouchListener, CvCameraViewListener2 {
     private static final String  TAG              = "CBD::Activity";
 
     private boolean              mIsColorSelected = false;
@@ -47,7 +48,10 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
     private Scalar               BLACK_RGB;
     private Scalar               WHITE_RGB;
     private Rect                 mRect;
-    private int                  count = 0;
+    private int[]                mFlashQueue;
+    private boolean              mStartRecording = false;
+    private int                  mCount = 0;
+    private boolean              mSetExp = false;
 
     private JavaCamResView mOpenCvCameraView;
 
@@ -110,6 +114,11 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
     }
 
     public void onCameraViewStarted(int width, int height) {
+        // Set the camera properties.
+        //mOpenCvCameraView.setExposure(0);
+        mOpenCvCameraView.setWhiteBalance(1);
+        mOpenCvCameraView.setFocusMode(5);
+
         mRgba = new Mat(height, width, CvType.CV_8UC4);
         mDetector = new ColorBlobDetector();
         mSpectrum = new Mat();
@@ -129,8 +138,8 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
         GREEN_MIN = new Scalar(85, 100, 100);
         GREEN_MAX = new Scalar(95, 255, 255);
         YELLOW_RGB = new Scalar(255, 255, 0);
-        YELLOW_MIN = new Scalar(10, 100, 100);
-        YELLOW_MAX = new Scalar(40, 255, 255);
+        YELLOW_MIN = new Scalar(26, 100, 100);
+        YELLOW_MAX = new Scalar(32, 255, 255);
         BLACK_RGB = new Scalar(0, 0, 0);
         WHITE_RGB = new Scalar(255, 255, 255);
 
@@ -148,10 +157,10 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
         mRect.width = 100;//(x+4 < cols) ? x + 4 - mRect.x : cols - mRect.x;
         mRect.height = 100;//(y+4 < rows) ? y + 4 - mRect.y : rows - mRect.y;
 
-        // Set the camera properties.
-        mOpenCvCameraView.setFocusMode(5);
-        mOpenCvCameraView.setWhiteBalance(1);
-        mOpenCvCameraView.setExposure(0);
+        // Initialise the led queue for each colour and for storing 10Hz for 60 secs.
+        mFlashQueue = new int[600];
+        mStartRecording = false;
+        mCount = 0;
     }
 
     public void onCameraViewStopped() {
@@ -159,30 +168,19 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
     }
 
     public boolean onTouch(View v, MotionEvent event) {
-        Mat touchedRegionRgba = mRgba.submat(mRect);
+        if (!mSetExp) {
+            Log.i(TAG, "Setting exposure");
+            mOpenCvCameraView.setExposure(0);
+            mSetExp = !mSetExp;
+            return false;
+        }
 
-        Mat touchedRegionHsv = new Mat();
-        Imgproc.cvtColor(touchedRegionRgba, touchedRegionHsv, Imgproc.COLOR_RGB2HSV_FULL);
-
-        // Calculate average color of touched region
-        mBlobColorHsv = Core.sumElems(touchedRegionHsv);
-        int pointCount = mRect.width * mRect.height;
-        for (int i = 0; i < mBlobColorHsv.val.length; i++)
-            mBlobColorHsv.val[i] /= pointCount;
-
-        mBlobColorRgba = converScalarHsv2Rgba(mBlobColorHsv);
-
-        Log.i(TAG, "Touched rgba color: (" + mBlobColorRgba.val[0] + ", " + mBlobColorRgba.val[1] +
-                ", " + mBlobColorRgba.val[2] + ", " + mBlobColorRgba.val[3] + ")");
-
-        mDetector.setHsvColor(mBlobColorHsv);
-
-        //Imgproc.resize(mDetector.getSpectrum(), mSpectrum, SPECTRUM_SIZE);
-
-        mIsColorSelected = true;
-
-        touchedRegionRgba.release();
-        touchedRegionHsv.release();
+        if (!mStartRecording) {
+            Log.i(TAG, "Started recording");
+        } else {
+            Log.i(TAG, "Stopped recording");
+        }
+        mStartRecording = !mStartRecording;
 
         return false; // don't need subsequent touch events
     }
@@ -190,6 +188,10 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
         mRgba = inputFrame.rgba();
         Core.rectangle(mRgba, mRect.tl(), mRect.br(), new Scalar(255, 255, 255), 0, 8, 0);
+
+        if (!mStartRecording) {
+            return mRgba;
+        }
 
         Mat touchedRegionRgba = mRgba.submat(mRect);
 
@@ -200,11 +202,15 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
 
         Core.inRange(touchedRegionHsv, GREEN_MIN, GREEN_MAX, mask);
 
+        // 0 = none/black, 1 = red, 2 = green, 3 = blue, 4 = yellow
+        mFlashQueue[mCount] = 0;
+
         boolean ledOn = false;
         Scalar maskScalar = Core.sumElems(mask);
         for (int i = 0; i < maskScalar.val.length; ++i) {
             if (maskScalar.val[i] > 0.0) {
                 ledOn = true;
+                mFlashQueue[mCount] = 2;
                 break;
             }
         }
@@ -218,6 +224,7 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
             for (int i = 0; i < maskScalar.val.length; ++i) {
                 if (maskScalar.val[i] > 0.0) {
                     ledOn = true;
+                    mFlashQueue[mCount] = 1;
                     break;
                 }
             }
@@ -233,6 +240,7 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
             for (int i = 0; i < maskScalar.val.length; ++i) {
                 if (maskScalar.val[i] > 0.0) {
                     ledOn = true;
+                    mFlashQueue[mCount] = 3;
                     break;
                 }
             }
@@ -248,11 +256,23 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
             for (int i = 0; i < maskScalar.val.length; ++i) {
                 if (maskScalar.val[i] > 0.0) {
                     ledOn = true;
+                    mFlashQueue[mCount] = 4;
                     break;
                 }
             }
 
             mBlobColorRgba = ledOn ? YELLOW_RGB : BLACK_RGB;
+        }
+
+        mCount++;
+        if (mCount == mFlashQueue.length) {
+            // Stop recording.
+            mStartRecording = false;
+            String res = "";
+            for (int i = 0; i < mFlashQueue.length; i++) {
+              res += " " + (mFlashQueue[i] == 0 ? "." : mFlashQueue[i]);
+            }
+            Log.e(TAG, "Results: " + res);
         }
 
         // Calculate average color of the selected region
@@ -298,4 +318,5 @@ public class ColorBlobDetectionActivity extends Activity implements OnTouchListe
 
         return new Scalar(pointMatRgba.get(0, 0));
     }
+
 }
